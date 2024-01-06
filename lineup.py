@@ -104,12 +104,19 @@ def load_and_process_data(folder_path):
 
     # Select and order columns for the final table
     final_table = final_table[['Lineup', 'Frequency', 'Points', 'Points per Shot', 'Turnovers', 'Turnover Percentage',
-                               'FG Made', 'FG Attempted', 'FG%', '3P Made', '3P Attempted', '3P%', 'FT Made', 'FT Attempted', 'FT%',
-                               'Our Off Reb', 'Our Off Reb %', 'Opp Off Reb', 'Opp Off Reb %']]
+                               'FG Made', 'FG Attempted', 'FG%', '3P Made', '3P Attempted', '3P%', 'FT Made', 'FT Attempted', 'FT%']]
     return final_table
 
 # Streamlit app starts here
-st.title('Basketball Lineup Analysis')
+# Layout for title and image
+col1, col2 = st.beta_columns([1, 4])  # Adjust the ratio as needed
+# Column for the image
+with col1:
+    st.image('gtlogo.svg', width=100)  # Adjust the path and width as needed
+
+# Column for the title
+with col2:
+    st.title('Georgia Tech Lineup Analysis')
 
 # User input for folder path
 folder_path = st.text_input('Enter the folder path for CSV files:', 'game-csv-2023')
