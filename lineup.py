@@ -3,15 +3,9 @@ import pandas as pd
 import os
 import re
 
-# Define your functions for data processing
-
-def sort_cell_contents(cell):
-    if isinstance(cell, str):
-        items = [x.strip() for x in cell.split(',')]
-        items.sort(key=lambda x: int(re.search(r'\d+', x).group()))
-        return ', '.join(items)
-    else:
-        return cell
+# Helper functions for specific calculations
+def count_shots(result):
+    return 1 if result in ['O2', 'O3', 'X2', 'X3', 'X3F', 'X2F', 'TO'] else 0
 
 def calculate_points(result):
     if result in ['O3', 'O3F']:
@@ -21,12 +15,6 @@ def calculate_points(result):
     elif result == 'FT - MK':
         return 1
     return 0
-
-def count_shots(result):
-    return 1 if result in ['O2', 'O3', 'X2', 'X3', 'X3F', 'X2F', 'TO'] else 0
-
-def count_turnovers(result):
-    return 1 if result == 'TO' else 0
 
 def count_field_goals_made(result):
     return 1 if result in ['O2', 'O3', 'O2F', 'O3F'] else 0
@@ -46,35 +34,42 @@ def count_free_throws_made(result):
 def count_free_throws_attempted(result):
     return 1 if result in ['FT - MK', 'FT - MI'] else 0
 
-def count_our_offensive_rebounds(result):
-    return 1 if result == 'GT Off Reb' else 0
+def count_turnovers(result):
+    return 1 if result == 'TO' else 0
 
-def count_opponent_offensive_rebounds(result):
-    return 1 if result == 'Opp Off Reb' else 0
+def sort_cell_contents(cell):
+    if isinstance(cell, str):
+        items = [x.strip() for x in cell.split(',')]
+        items.sort(key=lambda x: int(re.search(r'\d+', x).group()))
+        return ', '.join(items)
+    else:
+        return cell
 
-def load_and_process_data(folder_path):
-    dataframes = []
-    for filename in os.listdir(folder_path):
-        if filename.endswith('.csv'):
-            file_path = os.path.join(folder_path, filename)
-            df = pd.read_csv(file_path)
-            df['ON COURT'] = df['ON COURT'].apply(sort_cell_contents)
-            df['Points'] = df['Result'].apply(calculate_points)
-            df['Shots'] = df['Result'].apply(count_shots)
-            df['Turnovers'] = df['Result'].apply(count_turnovers)
-            df['FG Made'] = df['Result'].apply(count_field_goals_made)
-            df['FG Attempted'] = df['Result'].apply(count_field_goals_attempted)
-            df['3P Made'] = df['Result'].apply(count_three_point_made)
-            df['3P Attempted'] = df['Result'].apply(count_three_point_attempted)
-            df['FT Made'] = df['Result'].apply(count_free_throws_made)
-            df['FT Attempted'] = df['Result'].apply(count_free_throws_attempted)
-            df['Our Off Reb'] = df['Result'].apply(count_our_offensive_rebounds)
-            df['Opp Off Reb'] = df['Result'].apply(count_opponent_offensive_rebounds)
-            dataframes.append(df)
-    combined_df = pd.concat(dataframes, ignore_index=True)
-    
-    # Aggregate the summed stats for each lineup
-    lineup_stats = combined_df.groupby('ON COURT').agg({
+def calculate_plus_minus(offensive_stats, defensive_stats):
+    offensive_stats.set_index('ON COURT', inplace=True)
+    defensive_stats.set_index('ON COURT', inplace=True)
+
+    plus_minus = offensive_stats['Points'] - defensive_stats['Points']
+
+    offensive_stats.reset_index(inplace=True)
+    defensive_stats.reset_index(inplace=True)
+
+    return plus_minus
+
+def process_stats(df, offense_or_defense):
+    filtered_df = df[df['Row'] == offense_or_defense]
+    filtered_df['Points'] = filtered_df['Result'].apply(calculate_points)
+    filtered_df['Shots'] = filtered_df['Result'].apply(count_shots)
+    filtered_df['Turnovers'] = filtered_df['Result'].apply(count_turnovers)
+    filtered_df['FG Made'] = filtered_df['Result'].apply(count_field_goals_made)
+    filtered_df['FG Attempted'] = filtered_df['Result'].apply(count_field_goals_attempted)
+    filtered_df['3P Made'] = filtered_df['Result'].apply(count_three_point_made)
+    filtered_df['3P Attempted'] = filtered_df['Result'].apply(count_three_point_attempted)
+    filtered_df['FT Made'] = filtered_df['Result'].apply(count_free_throws_made)
+    filtered_df['FT Attempted'] = filtered_df['Result'].apply(count_free_throws_attempted)
+    filtered_df['Possessions'] = filtered_df['Shots'] + filtered_df['Turnovers']
+
+    stats = filtered_df.groupby('ON COURT').agg({
         'Points': 'sum',
         'Shots': 'sum',
         'Turnovers': 'sum',
@@ -84,61 +79,93 @@ def load_and_process_data(folder_path):
         '3P Attempted': 'sum',
         'FT Made': 'sum',
         'FT Attempted': 'sum',
-        'Our Off Reb': 'sum',
-        'Opp Off Reb': 'sum'
+        'Possessions': 'sum'
     }).reset_index()
 
-    # Calculate percentages and points per shot
-    lineup_stats['FG%'] = (lineup_stats['FG Made'] / lineup_stats['FG Attempted']).round(3) * 100
-    lineup_stats['3P%'] = (lineup_stats['3P Made'] / lineup_stats['3P Attempted']).round(3) * 100
-    lineup_stats['FT%'] = (lineup_stats['FT Made'] / lineup_stats['FT Attempted']).round(3) * 100
-    lineup_stats['Points per Shot'] = (lineup_stats['Points'] / lineup_stats['Shots']).round(3)
-    lineup_stats['Turnover Percentage'] = (lineup_stats['Turnovers'] / lineup_stats['Shots']).round(3) * 100  # Assuming shots represent possessions
-    lineup_stats['Our Off Reb %'] = (lineup_stats['Our Off Reb'] / lineup_stats['Shots']).round(3) * 100
-    lineup_stats['Opp Off Reb %'] = (lineup_stats['Opp Off Reb'] / lineup_stats['Shots']).round(3) * 100
+    stats['Points per Shot'] = (stats['Points'] / stats['Shots']).round(3)
+    stats['FG%'] = (stats['FG Made'] / stats['FG Attempted']).round(3) * 100
+    stats['3P%'] = (stats['3P Made'] / stats['3P Attempted']).round(3) * 100
+    stats['FT%'] = (stats['FT Made'] / stats['FT Attempted']).round(3) * 100
+    stats['Turnover Percentage'] = (stats['Turnovers'] / stats['Possessions']).round(3) * 100
 
-    # Merge the aggregated stats with the frequency table
-    frequency_table = combined_df['ON COURT'].value_counts().reset_index()
-    frequency_table.columns = ['Lineup', 'Possessions']
-    final_table = frequency_table.merge(lineup_stats, left_on='Lineup', right_on='ON COURT')
+    return stats
 
-    # Select and order columns for the final table
-    final_table = final_table[['Lineup', 'Possessions', 'Points', 'Points per Shot', 'Turnovers', 'Turnover Percentage',
-                               'FG Made', 'FG Attempted', 'FG%', '3P Made', '3P Attempted', '3P%', 'FT Made', 'FT Attempted', 'FT%']]
-    return final_table
+def load_and_process_data(folder_path):
+    dataframes = []
+    for filename in os.listdir(folder_path):
+        if filename.endswith('.csv'):
+            file_path = os.path.join(folder_path, filename)
+            df = pd.read_csv(file_path)
+            df['ON COURT'] = df['ON COURT'].apply(sort_cell_contents)
+            dataframes.append(df)
+    combined_df = pd.concat(dataframes, ignore_index=True)
+    
 
-# Streamlit app starts here
+    offensive_stats = process_stats(combined_df, 'OFFENSE')
+    defensive_stats = process_stats(combined_df, 'DEFENSE')
 
-# Layout for image and title
-col1, col2 = st.columns([1, 4])  # Adjust the ratio as needed
+    plus_minus = calculate_plus_minus(offensive_stats, defensive_stats)
+    offensive_stats['+/-'] = offensive_stats['ON COURT'].map(plus_minus)
+    defensive_stats['+/-'] = defensive_stats['ON COURT'].map(plus_minus)
+
+    offensive_stats = offensive_stats[['ON COURT','+/-', 'Possessions', 'Points', 'Points per Shot', 
+                   'FG Made', 'FG Attempted', 'FG%', 
+                   '3P Made', '3P Attempted', '3P%', 
+                   'Turnovers', 'Turnover Percentage', 
+                   'FT Made', 'FT Attempted', 'FT%']]
+    
+    defensive_stats = defensive_stats[['ON COURT', '+/-', 'Possessions', 'Points', 'Points per Shot', 
+                   'FG Made', 'FG Attempted', 'FG%', 
+                   '3P Made', '3P Attempted', '3P%', 
+                   'Turnovers', 'Turnover Percentage', 
+                   'FT Made', 'FT Attempted', 'FT%']]
+    return offensive_stats, defensive_stats
+
+### Streamlit
+
+# Yea I made this people gotta know
+st.markdown("Created by: Ankith Kodali (more commonly known as AK)")
+
+# Layout for gt logo and title
+col1, col2 = st.columns([1, 4])
 
 # Column for the image
 with col1:
-    st.image('gtlogo.svg', width=100)  # Adjust the path and width as needed
+    st.image('gtlogo.svg', width=100)
 
 # Column for the title
 with col2:
     st.title('GT Lineup Analysis')
-
-# Displaying the creator's information
-st.write("Created by: Ankith Kodali (more commonly known as AK)")
-
-# User input for folder path
+    
 folder_path = st.text_input('Enter the folder path for CSV files:', 'game-csv-2023')
 
-# User input for minimum frequency filter
-min_frequency = st.number_input('Enter minimum possessions for lineups to display:', min_value=1, value=100)
-
-if st.button('Analyze Data'):
+if st.button('Load Data'):
     if os.path.exists(folder_path):
         try:
-            final_table = load_and_process_data(folder_path)
-
-            # Apply the frequency filter
-            filtered_table = final_table[final_table['Possessions'] >= min_frequency]
-
-            st.write(filtered_table)
+            offensive_stats, defensive_stats = load_and_process_data(folder_path)
+            st.session_state['offensive_stats'] = offensive_stats.sort_values('Possessions', ascending=False)
+            st.session_state['defensive_stats'] = defensive_stats.sort_values('Possessions', ascending=False)
+            st.session_state['data_loaded'] = True
         except Exception as e:
             st.error(f'An error occurred: {e}')
     else:
         st.error('Folder does not exist. Please enter a valid folder path.')
+
+if 'data_loaded' in st.session_state and st.session_state['data_loaded']:
+    # User input for minimum possessions
+    min_poss = st.number_input('Enter minimum possessions for lineups to display:', min_value=1, value=50)
+
+    view_mode = st.radio("View Mode", ('Offensive Stats', 'Defensive Stats'))
+
+    if view_mode == 'Offensive Stats':
+        # Filter the data based on the minimum frequency
+        filtered_data = st.session_state['offensive_stats'][st.session_state['offensive_stats']['Possessions'] >= min_poss]
+        filtered_data = filtered_data.reset_index(drop=True)
+        filtered_data.index = filtered_data.index + 1
+        st.dataframe(filtered_data)
+    elif view_mode == 'Defensive Stats':
+        # Filter the data based on the minimum frequency
+        filtered_data = st.session_state['defensive_stats'][st.session_state['defensive_stats']['Possessions'] >= min_poss]
+        filtered_data = filtered_data.reset_index(drop=True)
+        filtered_data.index = filtered_data.index + 1
+        st.dataframe(filtered_data)
