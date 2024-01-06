@@ -108,13 +108,26 @@ def load_and_process_data(folder_path):
     return final_table
 
 # Streamlit app starts here
-st.title('Georgia Tech Lineup Analysis')
+
+# Layout for image and title
+col1, col2 = st.columns([1, 4])  # Adjust the ratio as needed
+
+# Column for the image
+with col1:
+    st.image('gtlogo.svg', width=100)  # Adjust the path and width as needed
+
+# Column for the title
+with col2:
+    st.title('GT Lineup Analysis')
+
+# Displaying the creator's information
+st.write("Created by: Ankith Kodali (more commonly known as AK)")
 
 # User input for folder path
 folder_path = st.text_input('Enter the folder path for CSV files:', 'game-csv-2023')
 
 # User input for minimum frequency filter
-min_frequency = st.number_input('Enter minimum possessions for lineups to display:', min_value=0, value=100)
+min_frequency = st.number_input('Enter minimum possessions for lineups to display:', min_value=1, value=100)
 
 if st.button('Analyze Data'):
     if os.path.exists(folder_path):
