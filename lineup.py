@@ -99,11 +99,11 @@ def load_and_process_data(folder_path):
 
     # Merge the aggregated stats with the frequency table
     frequency_table = combined_df['ON COURT'].value_counts().reset_index()
-    frequency_table.columns = ['Lineup', 'Frequency']
+    frequency_table.columns = ['Lineup', 'Possessions']
     final_table = frequency_table.merge(lineup_stats, left_on='Lineup', right_on='ON COURT')
 
     # Select and order columns for the final table
-    final_table = final_table[['Lineup', 'Frequency', 'Points', 'Points per Shot', 'Turnovers', 'Turnover Percentage',
+    final_table = final_table[['Lineup', 'Possessions', 'Points', 'Points per Shot', 'Turnovers', 'Turnover Percentage',
                                'FG Made', 'FG Attempted', 'FG%', '3P Made', '3P Attempted', '3P%', 'FT Made', 'FT Attempted', 'FT%']]
     return final_table
 
@@ -113,12 +113,18 @@ st.title('Georgia Tech Lineup Analysis')
 # User input for folder path
 folder_path = st.text_input('Enter the folder path for CSV files:', 'game-csv-2023')
 
+# User input for minimum frequency filter
+min_frequency = st.number_input('Enter minimum possessions for lineups to display:', min_value=0, value=100)
+
 if st.button('Analyze Data'):
     if os.path.exists(folder_path):
-        # Load, process data, and display the table
         try:
             final_table = load_and_process_data(folder_path)
-            st.write(final_table)
+
+            # Apply the frequency filter
+            filtered_table = final_table[final_table['Possessions'] >= min_frequency]
+
+            st.write(filtered_table)
         except Exception as e:
             st.error(f'An error occurred: {e}')
     else:
