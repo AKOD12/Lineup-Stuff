@@ -108,15 +108,7 @@ def load_and_process_data(folder_path):
     return final_table
 
 # Streamlit app starts here
-# Layout for title and image
-col1, col2 = st.beta_columns([1, 4])  # Adjust the ratio as needed
-# Column for the image
-with col1:
-    st.image('gtlogo.svg', width=100)  # Adjust the path and width as needed
-
-# Column for the title
-with col2:
-    st.title('Georgia Tech Lineup Analysis')
+st.title('Georgia Tech Lineup Analysis')
 
 # User input for folder path
 folder_path = st.text_input('Enter the folder path for CSV files:', 'game-csv-2023')
