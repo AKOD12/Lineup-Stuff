@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import re
 
-# Helper functions for specific calculations
+# Define helper functions for specific calculations
 def count_shots(result):
     return 1 if result in ['O2', 'O3', 'X2', 'X3', 'X3F', 'X2F', 'TO'] else 0
 
@@ -48,16 +48,14 @@ def sort_cell_contents(cell):
 def calculate_plus_minus(offensive_stats, defensive_stats):
     offensive_stats.set_index('ON COURT', inplace=True)
     defensive_stats.set_index('ON COURT', inplace=True)
-
     plus_minus = offensive_stats['Points'] - defensive_stats['Points']
-
     offensive_stats.reset_index(inplace=True)
     defensive_stats.reset_index(inplace=True)
-
     return plus_minus
 
 def process_stats(df, offense_or_defense):
     filtered_df = df[df['Row'] == offense_or_defense]
+    # Apply the helper functions to calculate various statistics
     filtered_df['Points'] = filtered_df['Result'].apply(calculate_points)
     filtered_df['Shots'] = filtered_df['Result'].apply(count_shots)
     filtered_df['Turnovers'] = filtered_df['Result'].apply(count_turnovers)
@@ -69,6 +67,7 @@ def process_stats(df, offense_or_defense):
     filtered_df['FT Attempted'] = filtered_df['Result'].apply(count_free_throws_attempted)
     filtered_df['Possessions'] = filtered_df['Shots'] + filtered_df['Turnovers']
 
+    # Group and aggregate the data
     stats = filtered_df.groupby('ON COURT').agg({
         'Points': 'sum',
         'Shots': 'sum',
@@ -82,6 +81,7 @@ def process_stats(df, offense_or_defense):
         'Possessions': 'sum'
     }).reset_index()
 
+    # Calculate percentages
     stats['Points per Shot'] = (stats['Points'] / stats['Shots']).round(3)
     stats['FG%'] = (stats['FG Made'] / stats['FG Attempted']).round(3) * 100
     stats['3P%'] = (stats['3P Made'] / stats['3P Attempted']).round(3) * 100
@@ -90,82 +90,81 @@ def process_stats(df, offense_or_defense):
 
     return stats
 
-def load_and_process_data(folder_path):
+def load_and_process_data(selected_files):
     dataframes = []
-    for filename in os.listdir(folder_path):
-        if filename.endswith('.csv'):
-            file_path = os.path.join(folder_path, filename)
-            df = pd.read_csv(file_path)
-            df['ON COURT'] = df['ON COURT'].apply(sort_cell_contents)
-            dataframes.append(df)
+    folder_path = 'game-csv-2023'
+    for filename in selected_files:
+        file_path = os.path.join(folder_path, filename)
+        df = pd.read_csv(file_path)
+        df['ON COURT'] = df['ON COURT'].apply(sort_cell_contents)
+        dataframes.append(df)
     combined_df = pd.concat(dataframes, ignore_index=True)
-    
 
+    # Process stats for offense and defense
     offensive_stats = process_stats(combined_df, 'OFFENSE')
     defensive_stats = process_stats(combined_df, 'DEFENSE')
 
+    # Calculate plus-minus
     plus_minus = calculate_plus_minus(offensive_stats, defensive_stats)
     offensive_stats['+/-'] = offensive_stats['ON COURT'].map(plus_minus)
     defensive_stats['+/-'] = defensive_stats['ON COURT'].map(plus_minus)
 
-    offensive_stats = offensive_stats[['ON COURT','+/-', 'Possessions', 'Points', 'Points per Shot', 
-                   'FG Made', 'FG Attempted', 'FG%', 
-                   '3P Made', '3P Attempted', '3P%', 
-                   'Turnovers', 'Turnover Percentage', 
-                   'FT Made', 'FT Attempted', 'FT%']]
+    # Select columns for offensive and defensive stats
+    offensive_stats = offensive_stats[['ON COURT', '+/-', 'Possessions', 'Points', 'Points per Shot', 
+                                       'FG Made', 'FG Attempted', 'FG%', 
+                                       '3P Made', '3P Attempted', '3P%', 
+                                       'Turnovers', 'Turnover Percentage', 
+                                       'FT Made', 'FT Attempted', 'FT%']]
     
     defensive_stats = defensive_stats[['ON COURT', '+/-', 'Possessions', 'Points', 'Points per Shot', 
-                   'FG Made', 'FG Attempted', 'FG%', 
-                   '3P Made', '3P Attempted', '3P%', 
-                   'Turnovers', 'Turnover Percentage', 
-                   'FT Made', 'FT Attempted', 'FT%']]
+                                       'FG Made', 'FG Attempted', 'FG%', 
+                                       '3P Made', '3P Attempted', '3P%', 
+                                       'Turnovers', 'Turnover Percentage', 
+                                       'FT Made', 'FT Attempted', 'FT%']]
     return offensive_stats, defensive_stats
 
-### Streamlit
-
-# Yea I made this people gotta know
+# Streamlit app layout
 st.markdown("Created by: Ankith Kodali (more commonly known as AK)")
 
-# Layout for gt logo and title
+# Layout for GT logo and title
 col1, col2 = st.columns([1, 4])
 
-# Column for the image
 with col1:
-    st.image('gtlogo.svg', width=100)
+    st.image('gtlogo.svg', width=100)  # Display GT logo
 
-# Column for the title
 with col2:
-    st.title('GT Lineup Analysis')
-    
-folder_path = st.text_input('Enter the folder path for CSV files:', 'game-csv-2023')
+    st.title('GT Lineup Analysis')  # App title
 
+# Automatic listing of files in 'game-csv-2023' folder
+try:
+    files = [f for f in os.listdir('game-csv-2023') if f.endswith('.csv')]
+    selected_files = st.multiselect('Select files for analysis:', files)
+except Exception as e:
+    st.error(f'Error accessing folder: {e}')
+
+# Load data button
 if st.button('Load Data'):
-    if os.path.exists(folder_path):
+    if selected_files:
         try:
-            offensive_stats, defensive_stats = load_and_process_data(folder_path)
+            offensive_stats, defensive_stats = load_and_process_data(selected_files)
             st.session_state['offensive_stats'] = offensive_stats.sort_values('Possessions', ascending=False)
             st.session_state['defensive_stats'] = defensive_stats.sort_values('Possessions', ascending=False)
             st.session_state['data_loaded'] = True
+            st.success('Data loaded successfully')
         except Exception as e:
             st.error(f'An error occurred: {e}')
     else:
-        st.error('Folder does not exist. Please enter a valid folder path.')
+        st.error('No files selected. Please select files for analysis.')
 
+# Display data based on user input
 if 'data_loaded' in st.session_state and st.session_state['data_loaded']:
-    # User input for minimum possessions
     min_poss = st.number_input('Enter minimum possessions for lineups to display:', min_value=1, value=50)
 
     view_mode = st.radio("View Mode", ('Offensive Stats', 'Defensive Stats'))
 
     if view_mode == 'Offensive Stats':
-        # Filter the data based on the minimum frequency
         filtered_data = st.session_state['offensive_stats'][st.session_state['offensive_stats']['Possessions'] >= min_poss]
-        filtered_data = filtered_data.reset_index(drop=True)
-        filtered_data.index = filtered_data.index + 1
-        st.dataframe(filtered_data)
+        st.dataframe(filtered_data.reset_index(drop=True))
     elif view_mode == 'Defensive Stats':
-        # Filter the data based on the minimum frequency
         filtered_data = st.session_state['defensive_stats'][st.session_state['defensive_stats']['Possessions'] >= min_poss]
-        filtered_data = filtered_data.reset_index(drop=True)
-        filtered_data.index = filtered_data.index + 1
-        st.dataframe(filtered_data)
+        st.dataframe(filtered_data.reset_index(drop=True))
