@@ -116,17 +116,17 @@ def get_password():
 
 # Streamlit app layout
 st.markdown("Created by: Ankith Kodali (more commonly known as AK)")
-# Get the password from the file
-correct_password = get_password()
-if correct_password is None:
-    st.error("Password file not found. Please contact AK.")
-    st.stop()
+# # Get the password from the file
+# correct_password = get_password()
+# if correct_password is None:
+#     st.error("Password file not found. Please contact AK.")
+#     st.stop()
 
-password = st.text_input("Enter password to access lineup data", type="password")
+# password = st.text_input("Enter password to access lineup data", type="password")
 
-if password != correct_password:
-    st.error("Incorrect password.")
-    st.stop()
+# if password != correct_password:
+#     st.error("Incorrect password.")
+#     st.stop()
 
 
 # Layout for GT logo and title
