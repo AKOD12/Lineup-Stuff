@@ -78,6 +78,13 @@ def process_stats(df, offense_or_defense):
         'FT Attempted': 'sum',
         'Possessions': 'sum'
     }
+    # Identify the one-hot encoded columns for Half Court Offense and Actions
+    hco_columns = [col for col in df.columns if col.startswith('HCO_')]
+    hca_columns = [col for col in df.columns if col.startswith('HCA_')]
+
+    # Add aggregate functions for the one-hot encoded columns (summing them)
+    for col in hco_columns + hca_columns:
+        agg_functions[col] = 'sum'
 
     stats = filtered_df.groupby('ON COURT').agg(agg_functions).reset_index()
 
@@ -89,7 +96,7 @@ def process_stats(df, offense_or_defense):
     cols = ['ON COURT', 'Possessions', 'Points', 'Points per Shot', 
             'FG Made', 'FG Attempted', 'FG%', '3P Made', '3P Attempted', 
             '3P%', 'Turnovers', 'Turnover Percentage', 'FT Made', 
-            'FT Attempted', 'FT%']
+            'FT Attempted', 'FT%'] + hco_columns + hca_columns
 
     stats = stats[cols]
 
@@ -102,9 +109,28 @@ def load_and_process_data(selected_files):
         file_path = os.path.join(folder_path, filename)
         df = pd.read_csv(file_path)
         df['ON COURT'] = df['ON COURT'].apply(sort_cell_contents)
+
+        # Check for the existence of 'HALF COURT OFFENSE' and 'HALF COURT ACTIONS'
+        half_court_offense = 'HALF COURT OFFENSE' if 'HALF COURT OFFENSE' in df.columns else ''
+        half_court_actions = 'HALF COURT ACTIONS' if 'HALF COURT ACTIONS' in df.columns else ''
+
+        # Combine the two columns if they exist, handle cases where one might not exist
+        if half_court_offense and half_court_actions:
+            df['Half Court Combined'] = df[half_court_offense].fillna('') + ',' + df[half_court_actions].fillna('')
+        elif half_court_offense:
+            df['Half Court Combined'] = df[half_court_offense]
+        elif half_court_actions:
+            df['Half Court Combined'] = df[half_court_actions]
+        else:
+            df['Half Court Combined'] = ''
+
+        df['Half Court Combined'] = df['Half Court Combined'].str.strip(',')
+
         dataframes.append(df)
     combined_df = pd.concat(dataframes, ignore_index=True)
-    return process_stats(combined_df, 'OFFENSE'), process_stats(combined_df, 'DEFENSE'), combined_df
+    return combined_df
+
+
 
 def get_password():
     try:
@@ -116,18 +142,6 @@ def get_password():
 
 # Streamlit app layout
 st.markdown("Created by: Ankith Kodali (more commonly known as AK)")
-# # Get the password from the file
-# correct_password = get_password()
-# if correct_password is None:
-#     st.error("Password file not found. Please contact AK.")
-#     st.stop()
-
-# password = st.text_input("Enter password to access lineup data", type="password")
-
-# if password != correct_password:
-#     st.error("Incorrect password.")
-#     st.stop()
-
 
 # Layout for GT logo and title
 col1, col2 = st.columns([1, 4])
@@ -151,10 +165,8 @@ except Exception as e:
 if st.button('Load Data'):
     if selected_files:
         try:
-            offensive_stats, defensive_stats, combined_df = load_and_process_data(selected_files)
-            st.session_state['offensive_stats'] = offensive_stats.sort_values('Possessions', ascending=False)
-            st.session_state['defensive_stats'] = defensive_stats.sort_values('Possessions', ascending=False)
-            st.session_state['combined_df'] = combined_df  # Save combined DataFrame in session state
+            combined_df = load_and_process_data(selected_files)
+            st.session_state['combined_df'] = combined_df
             st.session_state['data_loaded'] = True
             st.success('Data loaded successfully')
         except Exception as e:
@@ -162,15 +174,35 @@ if st.button('Load Data'):
     else:
         st.error('No files selected. Please select files for analysis.')
 
-# Display data based on user input
+# Filtering options for Half Court Offense and Actions
 if 'data_loaded' in st.session_state and st.session_state['data_loaded']:
+    # Filtering for Half Court Combined Actions
+    combined_actions = st.session_state['combined_df']['Half Court Combined'].dropna().unique()
+    excluded_options = ['', 'NaN', 'ISO, DK/MVMT']
+    combined_actions_options = [action for action in combined_actions if action not in excluded_options]
+    selected_combined_actions = st.multiselect('Filter by Combined Half Court Actions:', combined_actions_options)
+
+    # Transition filter
+    transition_options = st.session_state['combined_df']['TRANSITION'].dropna().unique()
+    selected_transition = st.multiselect('Filter by Transition:', transition_options)
+
+    # Apply filters to the DataFrame
+    filtered_df = st.session_state['combined_df']
+    if selected_combined_actions:
+        filtered_df = filtered_df[filtered_df['Half Court Combined'].isin(selected_combined_actions)]
+    if selected_transition:
+        filtered_df = filtered_df[filtered_df['TRANSITION'].isin(selected_transition)]
+
+    # Process the filtered data
+    offensive_stats = process_stats(filtered_df, 'OFFENSE')
+    defensive_stats = process_stats(filtered_df, 'DEFENSE')
+
+    # Display data based on user input
     min_poss = st.number_input('Enter minimum possessions for lineups to display:', min_value=1, value=20)
     view_mode = st.radio("View Mode", ('Offensive Stats', 'Defensive Stats'))
     if view_mode == 'Offensive Stats':
-        filtered_data = st.session_state['offensive_stats'][st.session_state['offensive_stats']['Possessions'] >= min_poss]
-        filtered_data = filtered_data.sort_values('Possessions', ascending=False)
+        filtered_data = offensive_stats[offensive_stats['Possessions'] >= min_poss]
         st.dataframe(filtered_data.reset_index(drop=True))
     elif view_mode == 'Defensive Stats':
-        filtered_data = st.session_state['defensive_stats'][st.session_state['defensive_stats']['Possessions'] >= min_poss]
-        filtered_data = filtered_data.sort_values('Possessions', ascending=False)
+        filtered_data = defensive_stats[defensive_stats['Possessions'] >= min_poss]
         st.dataframe(filtered_data.reset_index(drop=True))
