@@ -53,8 +53,26 @@ def calculate_plus_minus(offensive_stats, defensive_stats):
     defensive_stats.reset_index(inplace=True)
     return plus_minus
 
+
+def count_rebounds(df, column, term):
+    # Count occurrences of the specified term in the specified column
+    return df[column].apply(lambda x: x.split(',').count(term) if isinstance(x, str) else 0)
+
+
 def process_stats(df, offense_or_defense):
     filtered_df = df[df['Row'] == offense_or_defense]
+
+    # Count rebounds first
+    if offense_or_defense == 'OFFENSE':
+        rebound_term = 'GT Off Reb'
+        rebound_column_name = 'GT Offensive Rebounds'
+        filtered_df[rebound_column_name] = count_rebounds(filtered_df, 'OFFENSE', rebound_term)
+    else:
+        rebound_term = 'Opp Off Reb'
+        rebound_column_name = 'Opponent Offensive Rebounds'
+        filtered_df[rebound_column_name] = count_rebounds(filtered_df, 'DEFENSE', rebound_term)
+
+    # Then calculate other stats
     filtered_df['Points'] = filtered_df['Result'].apply(calculate_points)
     filtered_df['Shots'] = filtered_df['Result'].apply(count_shots)
     filtered_df['Turnovers'] = filtered_df['Result'].apply(count_turnovers)
@@ -64,8 +82,11 @@ def process_stats(df, offense_or_defense):
     filtered_df['3P Attempted'] = filtered_df['Result'].apply(count_three_point_attempted)
     filtered_df['FT Made'] = filtered_df['Result'].apply(count_free_throws_made)
     filtered_df['FT Attempted'] = filtered_df['Result'].apply(count_free_throws_attempted)
-    filtered_df['Possessions'] = filtered_df['Shots'] + filtered_df['Turnovers']
 
+    # Adjust possessions calculation by subtracting rebounds
+    filtered_df['Possessions'] = filtered_df['Shots'] + filtered_df['Turnovers'] - filtered_df[rebound_column_name]
+
+    # Define aggregation functions
     agg_functions = {
         'Points': 'sum',
         'Shots': 'sum',
@@ -76,28 +97,27 @@ def process_stats(df, offense_or_defense):
         '3P Attempted': 'sum',
         'FT Made': 'sum',
         'FT Attempted': 'sum',
-        'Possessions': 'sum'
+        'Possessions': 'sum',
+        rebound_column_name: 'sum'
     }
-    # Identify the one-hot encoded columns for Half Court Offense and Actions
-    hco_columns = [col for col in df.columns if col.startswith('HCO_')]
-    hca_columns = [col for col in df.columns if col.startswith('HCA_')]
-
-    # Add aggregate functions for the one-hot encoded columns (summing them)
-    for col in hco_columns + hca_columns:
-        agg_functions[col] = 'sum'
 
     stats = filtered_df.groupby('ON COURT').agg(agg_functions).reset_index()
 
-    stats['Points per Shot'] = (stats['Points'] / stats['Shots']).round(3)
+    stats['PPP'] = (stats['Points'] / stats['Shots']).round(3)
     stats['FG%'] = (stats['FG Made'] / stats['FG Attempted']).round(3) * 100
     stats['3P%'] = (stats['3P Made'] / stats['3P Attempted']).round(3) * 100
     stats['FT%'] = (stats['FT Made'] / stats['FT Attempted']).round(3) * 100
     stats['Turnover Percentage'] = (stats['Turnovers'] / stats['Possessions']).round(3) * 100
-    cols = ['ON COURT', 'Possessions', 'Points', 'Points per Shot', 
-            'FG Made', 'FG Attempted', 'FG%', '3P Made', '3P Attempted', 
-            '3P%', 'Turnovers', 'Turnover Percentage', 'FT Made', 
-            'FT Attempted', 'FT%'] + hco_columns + hca_columns
 
+    stats['Offensive Rebound %'] = ((stats[rebound_column_name] / stats['Possessions']).round(3)) * 100
+
+
+    cols = ['ON COURT', 'Possessions', 'Points', 'PPP', 
+            'FG Made', 'FG Attempted', 'FG%', '3P Made', '3P Attempted', 
+            '3P%', rebound_column_name, 'Offensive Rebound %', 'Turnovers', 'Turnover Percentage', 'FT Made', 
+            'FT Attempted', 'FT%']
+    
+    
     stats = stats[cols]
 
     return stats
@@ -129,15 +149,6 @@ def load_and_process_data(selected_files):
         dataframes.append(df)
     combined_df = pd.concat(dataframes, ignore_index=True)
     return combined_df
-
-
-
-def get_password():
-    try:
-        with open("secrets.txt", "r") as file:
-            return file.read().strip()
-    except FileNotFoundError:
-        return None  # You can set a default password or handle this case as needed
 
 
 # Streamlit app layout
@@ -198,11 +209,15 @@ if 'data_loaded' in st.session_state and st.session_state['data_loaded']:
     defensive_stats = process_stats(filtered_df, 'DEFENSE')
 
     # Display data based on user input
-    min_poss = st.number_input('Enter minimum possessions for lineups to display:', min_value=1, value=20)
+    min_poss = st.number_input('Enter minimum possessions for lineups to display:', min_value=1, value=5)
     view_mode = st.radio("View Mode", ('Offensive Stats', 'Defensive Stats'))
     if view_mode == 'Offensive Stats':
         filtered_data = offensive_stats[offensive_stats['Possessions'] >= min_poss]
-        st.dataframe(filtered_data.reset_index(drop=True))
+        sorted_data = filtered_data.sort_values(by='Possessions', ascending=False)
+        sorted_data.index = range(1, len(sorted_data) + 1)
+        st.dataframe(sorted_data)
     elif view_mode == 'Defensive Stats':
         filtered_data = defensive_stats[defensive_stats['Possessions'] >= min_poss]
-        st.dataframe(filtered_data.reset_index(drop=True))
+        sorted_data = filtered_data.sort_values(by='Possessions', ascending=False)
+        sorted_data.index = range(1, len(sorted_data) + 1)
+        st.dataframe(sorted_data)
